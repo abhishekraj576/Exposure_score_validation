@@ -7,12 +7,12 @@
   "cvss_exploitability_subscore": 3.5,
   "epss_score": 0.42,
   "asset_criticality": {
-    "overall_asset_criticality": 720,
+    "overall_asset_criticality": 815,
     "inherent": {
       "type": "Server",
-      "has_sensitive_info": true,
+      "has_sensitive_info": false,
       "environment": "pe",
-      "has_admin_privileges": false,
+      "has_admin_privileges": true,
       "asset_compliance_scope": "PCI DSS",
       "business_unit": "Production Server",
       "asset_role": "Domain Controller"
@@ -24,11 +24,11 @@
     }
   },
   "calculated_scores": {
-    "impact_base": 0.83,
-    "likelihood_base": 0.42,
-    "impact_final": 0.85,
-    "likelihood_final": 0.46,
-    "exposure_score_1000": 392
+    "impact_base": 0.73,
+    "likelihood_base": 0.50,
+    "impact_final": 0.73,
+    "likelihood_final": 0.78,
+    "exposure_score_1000": 763
   },
  "modifiers": {
     "known_exploited": {

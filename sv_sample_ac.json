@@ -1,0 +1,61 @@
+{
+  "finding_id": "CVE-2025-2184",
+  "finding_type": "software_vulnerability",
+  "asset_name": "Customer Database Server",
+  "asset_id": "ASSET-1022",
+  "cvss_base_score": 8.9,
+  "cvss_exploitability_subscore": 3.9,
+  "epss_score": 0.78,
+  "calculated_scores": {
+    "impact_base": {
+      "asset_criticality": {
+        "overall_asset_criticality": 720,
+        "inherent": {
+          "type": "Server",
+          "has_admin_privileges": true,
+          "has_sensitive_info": true,
+          "asset_compliance_scope": "PCI DSS",
+          "asset_role": "Database",
+          "environment": "production",
+          "business_unit": "Customer Service",
+          "organizational_unit": "Platform Engineering"
+        },
+        "inherited": {
+          "region": "Asia-Pacific",
+          "department": "Backend Systems",
+          "redundancy": "High"
+        }
+      }
+    },
+    "likelihood_base": {
+      "cvss_exploitability": 3.9,
+      "epss": 0.78,
+      "historical_exploitation": "High",
+      "patch_status": "Unpatched",
+      "default_value": 0.75,
+      "final_likelihood_score": 0.81
+    },
+    "impact_final": 0.72,
+    "likelihood_final": 0.81,
+    "exposure_score_1000": 583
+  },
+  "vulnerability_details": {
+    "severity": "High",
+    "affected_component": "Database Engine",
+    "description": "Critical vulnerability in database engine that allows remote code execution"
+  },
+  "modifiers": {
+    "known_exploited": {
+      "description": "Actively exploited in the wild",
+      "multiplier":1.3,
+      "applied_to": "likelihood",
+      "applies": true
+    },
+    "internet_facing": {
+      "description": "Asset directly exposed to the internet",
+      "multiplier":1.3,
+      "applied_to": "likelihood",
+      "applies": true
+    }
+  }
+}

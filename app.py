@@ -463,7 +463,7 @@ with whatif_col2:
     st.metric(
         "Asset Criticality",
         f"{new_asset_crit_score:.0f}/1000",
-        delta=f"{ac_change:+.0f} ({ac_pct_change:+.1f}%)"
+        # delta=f"{ac_change:+.0f} ({ac_pct_change:+.1f}%)"
     )
     
     # Exposure Score Change
@@ -473,7 +473,7 @@ with whatif_col2:
     st.metric(
         "Exposure Score",
         f"{whatif_exposure_calc['exposure_score_1000']:.0f}/1000",
-        delta=f"{exp_change:+.0f} ({exp_pct_change:+.1f}%)"
+        # delta=f"{exp_change:+.0f} ({exp_pct_change:+.1f}%)"
     )
 
 # Detailed breakdown table
@@ -514,19 +514,19 @@ st.markdown("*See how changes in CVSS and EPSS scores affect the exposure score*
 vuln_col1, vuln_col2 = st.columns(2)
 
 with vuln_col1:
-    st.markdown("#### Current vs What-If Scores")
+    st.markdown("#### What-If Scores")
     
     score_comparison = pd.DataFrame({
         'Metric': ['CVSS Base Score', 'EPSS Score'],
-        'Original': [f"{cvss_base:.2f}", f"{epss:.4f}"],
+        # 'Original': [f"{cvss_base:.2f}", f"{epss:.4f}"],
         'What-If': [
             f"{st.session_state.cvss_base_whatif:.2f}",
             f"{st.session_state.epss_whatif:.4f}"
         ],
-        'Change': [
-            f"{st.session_state.cvss_base_whatif - cvss_base:+.2f}",
-            f"{st.session_state.epss_whatif - epss:+.4f}"
-        ]
+        # 'Change': [
+        #     f"{st.session_state.cvss_base_whatif - cvss_base:+.2f}",
+        #     f"{st.session_state.epss_whatif - epss:+.4f}"
+        # ]
     })
     
     st.dataframe(score_comparison, hide_index=True, width='stretch')
@@ -573,8 +573,8 @@ with calc_col1:
 
     with st.expander("View Impact Calculation Details", expanded=False):
         st.write(f"**Base Impact**")
-        st.write(f"Asset Criticality: {new_asset_crit_score:.0f}/1000 (Updated from {asset_crit}/1000)")
-        st.write(f"CVSS Base Score: {st.session_state.cvss_base_whatif:.2f} (Original: {cvss_base:.2f})")
+        st.write(f"Asset Criticality: {new_asset_crit_score:.0f}/1000 ")
+        st.write(f"CVSS Base Score: {st.session_state.cvss_base_whatif:.2f} ")
         st.write(f"Normalized Impact: {whatif_exposure_calc['impact_base'] * 100:.0f}/1000")
         st.write("No modifiers applied to impact")
 
@@ -592,7 +592,7 @@ with calc_col2:
 
     with st.expander("View Likelihood Calculation Details", expanded=False):
         st.write(f"**Step 1: Base Likelihood**")
-        st.write(f"EPSS Score: {st.session_state.epss_whatif:.4f} (Original: {epss:.4f})")
+        st.write(f"EPSS Score: {st.session_state.epss_whatif:.4f}")
         # st.write(f"CVSS Exploitability: {st.session_state.cvss_exploit_whatif:.2f} (Original: {cvss_exploit:.2f})")
         st.write(f"Normalized Likelihood: {current_calc['likelihood_base'] * 100:.0f}/1000")
 
@@ -746,17 +746,17 @@ with detail_col1:
     st.write(f"**Finding ID:** {data['finding_id']}")
     st.write(f"**Asset Name:** {data['asset_name']}")
     st.write(f"**Asset ID:** {data.get('asset_id', 'N/A')}")
-    st.write(f"**Asset Criticality (Original):** {asset_crit:.0f}/1000")
-    st.write(f"**Asset Criticality (What-If):** {new_asset_crit_score:.0f}/1000")
+    # st.write(f"**Asset Criticality (Original):** {asset_crit:.0f}/1000")
+    st.write(f"**Asset Criticality:** {new_asset_crit_score:.0f}/1000")
 
 with detail_col2:
     st.markdown("#### Vulnerability Information")
     vulnerability_details = data.get('vulnerability_details', {})
     st.write(f"**Severity:** {vulnerability_details.get('severity', 'N/A')}")
-    st.write(f"**CVSS Base Score (Original):** {cvss_base:.2f}")
-    st.write(f"**CVSS Base Score (What-If):** {st.session_state.cvss_base_whatif:.2f}")
-    st.write(f"**EPSS Score (Original):** {epss:.4f}")
-    st.write(f"**EPSS Score (What-If):** {st.session_state.epss_whatif:.4f}")
+    # st.write(f"**CVSS Base Score (Original):** {cvss_base:.2f}")
+    st.write(f"**CVSS Base Score:** {st.session_state.cvss_base_whatif:.2f}")
+    # st.write(f"**EPSS Score (Original):** {epss:.4f}")
+    st.write(f"**EPSS Score:** {st.session_state.epss_whatif:.4f}")
     st.write(f"**Affected Component:** {vulnerability_details.get('affected_component', 'N/A')}")
 
 description = vulnerability_details.get('description', 'No description available')
