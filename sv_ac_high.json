@@ -1,0 +1,55 @@
+{
+  "finding_id": "CVE-2025-4421",
+  "finding_type": "software_vulnerability",
+  "asset_id": "ASSET-PRD-DC-01",
+  "asset_name": "Production Domain Controller",
+  "cvss_base_score": 8.6,
+  "cvss_exploitability_subscore": 3.5,
+  "epss_score": 0.42,
+  "asset_criticality": {
+    "overall_asset_criticality": 720,
+    "inherent": {
+      "type": "Server",
+      "has_sensitive_info": true,
+      "environment": "pe",
+      "has_admin_privileges": false,
+      "asset_compliance_scope": "PCI DSS",
+      "business_unit": "Production Server",
+      "asset_role": "Domain Controller"
+    },
+    "inherited": {
+      "organizational_unit": "Platform Engineering",
+      "region": "APAC",
+      "redundancy": "High"
+    }
+  },
+  "calculated_scores": {
+    "impact_base": 0.83,
+    "likelihood_base": 0.42,
+    "impact_final": 0.85,
+    "likelihood_final": 0.46,
+    "exposure_score_1000": 392
+  },
+ "modifiers": {
+    "known_exploited": {
+      "description": "Actively exploited in the wild",
+      "multiplier":{
+              "true":1.3,
+              "false":0.8
+         },
+      "applied_to": "likelihood",
+      "applies": true
+    },
+    "internet_facing": {
+      "description": "Asset directly exposed to the internet",
+      "multiplier":
+      {
+              "true":1.2,
+              "false":0.9
+         },
+      "applied_to": "likelihood",
+      "applies": true
+    }
+  },
+  "calculation_method": "weighted impact-likelihood model"
+}
