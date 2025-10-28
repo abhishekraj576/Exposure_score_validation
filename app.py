@@ -152,19 +152,15 @@ st.title("🛡️ Exposure Score Explainability Dashboard")
 st.markdown("**Understand how your exposure score is calculated and explore what-if scenarios**")
 
 # Extract core scoring parameters
-# Handle both old and new JSON structures
 if 'calculated_scores' in data and 'impact_base' in data['calculated_scores'] and isinstance(data['calculated_scores']['impact_base'], dict):
-    # Old structure with nested asset_criticality
     asset_crit = data.get('calculated_scores', {}).get('impact_base', {}).get('asset_criticality', {}).get('overall_asset_criticality', 0)
     asset_crit_details = data.get('calculated_scores', {}).get('impact_base', {}).get('asset_criticality', {})
 else:
-    # New structure or old structure with direct asset_criticality
     asset_crit = data.get('asset_criticality', {}).get('overall_asset_criticality', 0)
     asset_crit_details = data.get('asset_criticality', {})
 
 cvss_base = data.get('cvss_base_score', 0)
 epss = data.get('epss_score', 0)
-# cvss_exploit = data.get('cvss_exploitability_subscore', 0)
 
 # Store original modifiers from JSON
 original_modifiers = data.get('modifiers', {})
@@ -174,17 +170,18 @@ def normalize_to_10(value, scale=1000):
     """Normalize values from 0-1000 scale to 1-10 scale"""
     return (value / scale) * 10
 
-def calculate_asset_criticality_score(selected_attributes, mappings):
+def calculate_asset_criticality_score(selected_attributes, mappings, excluded_fields):
     """
     Calculate asset criticality based on selected attributes
     Formula: Sum of (Field Weight × Field Value Weightage) / Sum of (Field Weight × Max Field Value) × 1000
+    excluded_fields: set of field names to exclude from calculation
     """
     total_weighted_score = 0
     total_max_possible = 0
     breakdown = []
     
     for field_name, selected_value in selected_attributes.items():
-        if field_name in mappings:
+        if field_name in mappings and field_name not in excluded_fields:
             field_config = mappings[field_name]
             field_weight = field_config['field_weight']
             value_weightage = field_config['values'].get(selected_value, 1)
@@ -202,8 +199,22 @@ def calculate_asset_criticality_score(selected_attributes, mappings):
                 'field_weight': field_weight,
                 'value_weightage': value_weightage,
                 'weighted_score': weighted_score,
-                'max_possible': max_weighted_score
+                'max_possible': max_weighted_score,
+                'included': True
             })
+        elif field_name in excluded_fields:
+            # Add to breakdown but mark as excluded
+            if field_name in mappings:
+                field_config = mappings[field_name]
+                breakdown.append({
+                    'field': field_name,
+                    'value': selected_value,
+                    'field_weight': field_config['field_weight'],
+                    'value_weightage': 0,
+                    'weighted_score': 0,
+                    'max_possible': 0,
+                    'included': False
+                })
     
     # Calculate normalized score (0-1000)
     if total_max_possible > 0:
@@ -237,11 +248,9 @@ def calculate_exposure_score(asset_crit_score, cvss_base_val, epss_val, active_m
             applied_to = mod_data.get('applied_to', 'likelihood')
 
             if applied_to == 'likelihood':
-                # Get multiplier based on whether modifier is active (true) or not (false)
                 if isinstance(multiplier_config, dict):
                     multiplier = multiplier_config.get('true', 1.0) if is_active else multiplier_config.get('false', 1.0)
                 else:
-                    # Fallback for old format
                     multiplier = multiplier_config if is_active else 1.0
                 
                 likelihood_multiplier *= multiplier
@@ -276,19 +285,42 @@ if "modifier_states" not in st.session_state:
 
 # Initialize session state for asset criticality attributes
 if "asset_crit_selections" not in st.session_state:
-    # Set default values (first option for each field)
     st.session_state.asset_crit_selections = {
         field_name: list(field_config['values'].keys())[0]
         for field_name, field_config in asset_crit_mappings.items()
     }
+
+# Initialize session state for excluded fields
+if "excluded_fields" not in st.session_state:
+    st.session_state.excluded_fields = set()
+
+# Initialize session state for custom fields
+if "custom_fields" not in st.session_state:
+    st.session_state.custom_fields = {}
 
 # Initialize session state for vulnerability scores
 if "cvss_base_whatif" not in st.session_state:
     st.session_state.cvss_base_whatif = cvss_base
 if "epss_whatif" not in st.session_state:
     st.session_state.epss_whatif = epss
-# if "cvss_exploit_whatif" not in st.session_state:
-#     st.session_state.cvss_exploit_whatif = cvss_exploit
+
+# Function to save custom fields to config file
+def save_custom_fields_to_config():
+    """Save custom fields to the mappings configuration"""
+    try:
+        # This would be the ideal implementation to persist data
+        # For now, we'll keep it in session state
+        # In production, you'd write to a config file here
+        pass
+    except Exception as e:
+        st.error(f"Error saving custom fields: {e}")
+
+# Function to get combined mappings (original + custom)
+def get_combined_mappings():
+    """Combine original mappings with custom fields"""
+    combined = asset_crit_mappings.copy()
+    combined.update(st.session_state.custom_fields)
+    return combined
 
 # Sidebar: Vulnerability Score What-If Controls
 st.sidebar.header("⚙️ Scenario Controls")
@@ -316,15 +348,6 @@ st.session_state.epss_whatif = st.sidebar.slider(
     help="Likelihood Component: Exploitation Probability (0-1)"
 )
 
-# st.session_state.cvss_exploit_whatif = st.sidebar.slider(
-#     "CVSS Exploitability",
-#     min_value=0.0,
-#     max_value=10.0,
-#     value=float(cvss_exploit),
-#     step=0.1,
-#     help="Likelihood Component: CVSS Exploitability Subscore (0-10)"
-# )
-
 # Sidebar: Modifier Controls
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚡ Likelihood Modifiers")
@@ -334,7 +357,6 @@ for mod_key, mod_value in original_modifiers.items():
     multiplier_config = mod_value.get("multiplier", {})
     applied_to = mod_value.get("applied_to", "likelihood")
 
-    # Handle new multiplier format (dict with true/false) or old format (single value)
     if isinstance(multiplier_config, dict):
         multiplier_true = multiplier_config.get("true", 1.0)
         multiplier_false = multiplier_config.get("false", 1.0)
@@ -357,7 +379,6 @@ current_calc = calculate_exposure_score(
     asset_crit,
     st.session_state.cvss_base_whatif,
     st.session_state.epss_whatif,
-    # st.session_state.cvss_exploit_whatif,
     st.session_state.modifier_states
 )
 
@@ -366,39 +387,8 @@ original_calc = calculate_exposure_score(
     asset_crit,
     cvss_base,
     epss,
-    # cvss_exploit,
     {k: v.get("applies", False) for k, v in original_modifiers.items()}
 )
-
-# Main Dashboard Layout
-# st.markdown("### 📊 Current Exposure Score")
-
-# col1, col2, col3 = st.columns(3)
-
-# with col1:
-#     st.markdown(
-#         f"<h1 style='text-align: center; color: #1976d2;'>{current_calc['exposure_score_1000']:.0f}</h1>",
-#         unsafe_allow_html=True)
-#     st.markdown(f"<p style='text-align: center;'><strong>Exposure Score</strong></p>", unsafe_allow_html=True)
-#     st.markdown(f"<p style='text-align: center; font-size: 0.9em;'>Out of 1000</p>", unsafe_allow_html=True)
-
-# with col2:
-#     score_change = current_calc['exposure_score_1000'] - original_calc['exposure_score_1000']
-#     pct_change = (score_change / original_calc.get('exposure_score_1000', 0) * 100) if original_calc.get('exposure_score_1000', 0) > 0 else 0
-
-#     st.metric(
-#         "Change from Original State",
-#         f"{score_change:+.0f} points",
-#         delta=f"{pct_change:+.1f}%"
-#     )
-
-# with col3:
-#     st.metric("Impact Score", f"{current_calc['impact_final'] * 100:.0f}/1000")
-#     st.metric("Likelihood Score", f"{current_calc['likelihood_final'] * 100:.0f}/1000")
-
-# st.markdown("---")
-
-
 
 # ---------------------------------------------------
 # Asset Criticality What-If Section
@@ -406,19 +396,200 @@ original_calc = calculate_exposure_score(
 st.subheader("🏢 Asset Criticality What-If Analysis")
 st.markdown("*Explore how different asset attributes affect the criticality score and overall exposure*")
 
+# Button to create new field
+col_button1, col_button2 = st.columns([1, 5])
+with col_button1:
+    if st.button("➕ Create New Field", use_container_width=True):
+        st.session_state.show_create_field_dialog = True
+
+# Dialog for creating new field
+if st.session_state.get("show_create_field_dialog", False):
+    with st.expander("🔧 Create New Asset Criticality Field", expanded=True):
+        st.markdown("#### Add a custom field to the asset criticality calculation")
+        
+        dialog_col1, dialog_col2 = st.columns(2)
+        
+        with dialog_col1:
+            new_field_name = st.text_input(
+                "Field Name",
+                placeholder="e.g., Data Sensitivity Level",
+                help="Enter a unique name for this field",
+                key="new_field_name"
+            )
+            
+            new_field_weight = st.number_input(
+                "Field Weight",
+                min_value=1,
+                max_value=10,
+                value=3,
+                help="Weight for this field (1-10, higher = more important)",
+                key="new_field_weight"
+            )
+        
+        with dialog_col2:
+            st.markdown("##### Field Values & Weights")
+            st.markdown("*Add at least 2 values for this field*")
+         
+        # Dynamic value input section
+        if "new_field_values" not in st.session_state:
+            st.session_state.new_field_values = [
+                {"value": "", "weight": 10},
+                {"value": "", "weight": 1}
+            ]
+        
+        # st.markdown("---")
+        
+        # Display value inputs
+        values_col1, values_col2, values_col3 = st.columns([3, 2, 1])
+        
+        with values_col1:
+            st.markdown("**Value Name**")
+        with values_col2:
+            st.markdown("**Weight (1-10)**")
+        with values_col3:
+            st.markdown("**Action**")
+        
+        values_to_remove = []
+        
+        for idx, value_data in enumerate(st.session_state.new_field_values):
+            val_col1, val_col2, val_col3 = st.columns([3, 2, 1])
+            
+            with val_col1:
+                value_name = st.text_input(
+                    f"Value {idx+1}",
+                    value=value_data["value"],
+                    placeholder=f"e.g., High, Medium, Low",
+                    key=f"value_name_{idx}",
+                    label_visibility="collapsed"
+                )
+                st.session_state.new_field_values[idx]["value"] = value_name
+            
+            with val_col2:
+                value_weight = st.number_input(
+                    f"Weight {idx+1}",
+                    min_value=1.0,
+                    max_value=10.0,
+                    value=float(value_data["weight"]),
+                    step=0.1,
+                    key=f"value_weight_{idx}",
+                    label_visibility="collapsed"
+                )
+                st.session_state.new_field_values[idx]["weight"] = value_weight
+            
+            with val_col3:
+                if len(st.session_state.new_field_values) > 2:
+                    if st.button("Remove", key=f"remove_value_{idx}", help="Remove this value"):
+                        values_to_remove.append(idx)
+        
+        # Remove marked values
+        for idx in reversed(values_to_remove):
+            st.session_state.new_field_values.pop(idx)
+        
+        # Add new value button
+        if st.button("➕ Add Another Value"):
+            st.session_state.new_field_values.append({"value": "", "weight": 5})
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Action buttons
+        action_col1, action_col2, action_col3 = st.columns([1, 1, 3])
+        
+        with action_col1:
+            if st.button("Create Field", type="primary", use_container_width=True):
+                # Validate inputs
+                if not new_field_name or new_field_name.strip() == "":
+                    st.error("Please enter a field name")
+                elif new_field_name in get_combined_mappings():
+                    st.error("This field name already exists")
+                else:
+                    # Check if all values are filled
+                    valid_values = [v for v in st.session_state.new_field_values if v["value"].strip() != ""]
+                    
+                    if len(valid_values) < 2:
+                        st.error("Please add at least 2 values")
+                    else:
+                        # Create the new field
+                        new_field = {
+                            "field_weight": new_field_weight,
+                            "values": {v["value"]: v["weight"] for v in valid_values}
+                        }
+                        
+                        # Add to custom fields
+                        st.session_state.custom_fields[new_field_name] = new_field
+                        
+                        # Initialize selection for this field
+                        first_value = list(new_field["values"].keys())[0]
+                        st.session_state.asset_crit_selections[new_field_name] = first_value
+                        
+                        # Save to config (optional - implement if needed)
+                        save_custom_fields_to_config()
+                        
+                        # Reset and close dialog
+                        st.session_state.show_create_field_dialog = False
+                        st.session_state.new_field_values = [
+                            {"value": "", "weight": 10},
+                            {"value": "", "weight": 1}
+                        ]
+                        
+                        st.success(f" Field '{new_field_name}' created successfully!")
+                        st.rerun()
+        
+        with action_col2:
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_create_field_dialog = False
+                st.session_state.new_field_values = [
+                    {"value": "", "weight": 10},
+                    {"value": "", "weight": 1}
+                ]
+                st.rerun()
+
+# Get combined mappings (original + custom)
+combined_mappings = get_combined_mappings()
+
 # Create two columns for the what-if controls
 whatif_col1, whatif_col2 = st.columns([2, 1])
 
 with whatif_col1:
     st.markdown("#### Configure Asset Attributes")
     
+    # Show custom fields indicator if any exist
+    # if st.session_state.custom_fields:
+    #     st.info(f" {len(st.session_state.custom_fields)} custom field(s) added")
+    
     # Create a grid of dropdowns for asset attributes
     attr_cols = st.columns(3)
     
-    for idx, (field_name, field_config) in enumerate(asset_crit_mappings.items()):
+    for idx, (field_name, field_config) in enumerate(combined_mappings.items()):
         col_idx = idx % 3
         with attr_cols[col_idx]:
+            # Check if this is a custom field
+            is_custom = field_name in st.session_state.custom_fields
+            
+            # Check if field is excluded
+            is_excluded = field_name in st.session_state.excluded_fields
+            
+            # Add checkbox to exclude/include field at the top
+            checkbox_label = f" {field_name}" + (" 🔧" if is_custom else "")
+            is_included = st.checkbox(
+                checkbox_label,
+                value=not is_excluded,
+                key=f"include_{field_name}",
+                help=f"{'Custom field - ' if is_custom else ''}Uncheck to exclude (Field Weight: {field_config['field_weight']})"
+            )
+            
+            # Update excluded fields set
+            if not is_included:
+                st.session_state.excluded_fields.add(field_name)
+            else:
+                st.session_state.excluded_fields.discard(field_name)
+            
             options = list(field_config['values'].keys())
+            
+            # Initialize selection if not exists
+            if field_name not in st.session_state.asset_crit_selections:
+                st.session_state.asset_crit_selections[field_name] = options[0]
+            
             current_value = st.session_state.asset_crit_selections.get(field_name, options[0])
             
             # Find current index
@@ -427,20 +598,43 @@ with whatif_col1:
             except ValueError:
                 current_idx = 0
             
+            # Show the selectbox with dynamic label
+            if is_included:
+                label = f"Value:"
+            else:
+                label = f"Value (Excluded):"
+            
             selected = st.selectbox(
-                field_name,
+                label,
                 options=options,
                 index=current_idx,
                 key=f"asset_attr_{field_name}",
-                help=f"Field Weight: {field_config['field_weight']}"
+                help=f"Select value for {field_name}",
+                disabled=not is_included
             )
             
             st.session_state.asset_crit_selections[field_name] = selected
+            
+            # Add delete button for custom fields
+            if is_custom:
+                if st.button(f" Delete", key=f"delete_field_{field_name}", help="Delete this custom field"):
+                    # Remove from custom fields
+                    del st.session_state.custom_fields[field_name]
+                    # Remove from selections
+                    if field_name in st.session_state.asset_crit_selections:
+                        del st.session_state.asset_crit_selections[field_name]
+                    # Remove from excluded fields
+                    st.session_state.excluded_fields.discard(field_name)
+                    st.rerun()
+            
+            # Add visual separator
+            st.markdown("---")
 
 # Calculate new asset criticality
 new_asset_crit_calc = calculate_asset_criticality_score(
     st.session_state.asset_crit_selections,
-    asset_crit_mappings
+    combined_mappings,
+    st.session_state.excluded_fields
 )
 new_asset_crit_score = new_asset_crit_calc['score']
 
@@ -449,7 +643,6 @@ whatif_exposure_calc = calculate_exposure_score(
     new_asset_crit_score,
     st.session_state.cvss_base_whatif,
     st.session_state.epss_whatif,
-    # st.session_state.cvss_exploit_whatif,
     st.session_state.modifier_states
 )
 
@@ -462,9 +655,12 @@ with whatif_col2:
     
     st.metric(
         "Asset Criticality",
-        f"{new_asset_crit_score:.0f}/1000",
-        # delta=f"{ac_change:+.0f} ({ac_pct_change:+.1f}%)"
+        f"{new_asset_crit_score:.0f}/1000"
     )
+    
+    # # Show number of excluded fields
+    # if st.session_state.excluded_fields:
+    #     st.info(f" {len(st.session_state.excluded_fields)} field(s) excluded")
     
     # Exposure Score Change
     exp_change = whatif_exposure_calc['exposure_score_1000'] - current_calc['exposure_score_1000']
@@ -472,8 +668,7 @@ with whatif_col2:
     
     st.metric(
         "Exposure Score",
-        f"{whatif_exposure_calc['exposure_score_1000']:.0f}/1000",
-        # delta=f"{exp_change:+.0f} ({exp_pct_change:+.1f}%)"
+        f"{whatif_exposure_calc['exposure_score_1000']:.0f}/1000"
     )
 
 # Detailed breakdown table
@@ -481,30 +676,40 @@ st.markdown("#### Detailed Attribute Breakdown")
 
 if new_asset_crit_calc['breakdown']:
     breakdown_df = pd.DataFrame(new_asset_crit_calc['breakdown'])
-    # breakdown_df['contribution_%'] = (breakdown_df['weighted_score'] / breakdown_df['weighted_score'].sum() * 100).round(1)
     
     # Format the dataframe
-    display_df = breakdown_df[['field', 'value', 'field_weight', 'value_weightage', 'weighted_score', 'max_possible']].copy()
-    display_df.columns = ['Field', 'Selected Value', 'Field Weight', 'Value Weight', 'Weighted Score', 'Max Possible']
+    display_df = breakdown_df[['field', 'value', 'field_weight', 'value_weightage', 'weighted_score', 'max_possible', 'included']].copy()
+    display_df.columns = ['Field', 'Selected Value', 'Field Weight', 'Value Weight', 'Weighted Score', 'Max Possible', 'Included']
+    
+    # Apply styling to show excluded fields
+    def highlight_excluded(row):
+        if not row['Included']:
+            return ['background-color: #ffebee; opacity: 0.6'] * len(row)
+        return [''] * len(row)
     
     st.dataframe(
-        display_df,
+        display_df.style.apply(highlight_excluded, axis=1),
         hide_index=True,
         width='stretch',
         height=350
     )
     
     # Summary metrics
-    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
     with summary_col1:
         st.metric("Total Weighted Score", f"{new_asset_crit_calc['total_weighted_score']:.1f}")
     with summary_col2:
         st.metric("Maximum Possible", f"{new_asset_crit_calc['total_max_possible']:.1f}")
     with summary_col3:
-        ratio = new_asset_crit_calc['total_weighted_score'] / new_asset_crit_calc['total_max_possible']
+        ratio = new_asset_crit_calc['total_weighted_score'] / new_asset_crit_calc['total_max_possible'] if new_asset_crit_calc['total_max_possible'] > 0 else 0
         st.metric("Score Ratio", f"{ratio:.3f}")
+    with summary_col4:
+        included_count = len([b for b in new_asset_crit_calc['breakdown'] if b['included']])
+        total_count = len(combined_mappings)
+        st.metric("Fields Included", f"{included_count}/{total_count}")
 
 st.markdown("---")
+
 # ---------------------------------------------------
 # Vulnerability Score Impact Analysis Section
 # ---------------------------------------------------
@@ -518,15 +723,10 @@ with vuln_col1:
     
     score_comparison = pd.DataFrame({
         'Metric': ['CVSS Base Score', 'EPSS Score'],
-        # 'Original': [f"{cvss_base:.2f}", f"{epss:.4f}"],
         'What-If': [
             f"{st.session_state.cvss_base_whatif:.2f}",
             f"{st.session_state.epss_whatif:.4f}"
-        ],
-        # 'Change': [
-        #     f"{st.session_state.cvss_base_whatif - cvss_base:+.2f}",
-        #     f"{st.session_state.epss_whatif - epss:+.4f}"
-        # ]
+        ]
     })
     
     st.dataframe(score_comparison, hide_index=True, width='stretch')
@@ -534,29 +734,18 @@ with vuln_col1:
 with vuln_col2:
     st.markdown("#### Component Impact")
     
-    # Calculate impact from vulnerability score changes
-    # original_impact = normalize_to_10(asset_crit + cvss_base * 100, scale=2000)
-    # whatif_impact = normalize_to_10(asset_crit + st.session_state.cvss_base_whatif * 100, scale=2000)
-    # impact_diff = whatif_impact - original_impact
-    
     st.metric(
         "Impact Component Change",
-        f"{whatif_exposure_calc['impact_base'] * 100:.0f}/1000",
-        # delta=f"{impact_diff * 100:+.0f}"
+        f"{whatif_exposure_calc['impact_base'] * 100:.0f}/1000"
     )
-    
-    # # Calculate likelihood from vulnerability score changes
-    # original_likelihood = normalize_to_10(epss * 1000 , scale=1000)
-    # whatif_likelihood = normalize_to_10(st.session_state.epss_whatif * 1000 , scale=1000)
-    # likelihood_diff = whatif_likelihood - original_likelihood
     
     st.metric(
         "Likelihood Component Change",
-        f"{current_calc['likelihood_final']*100:.0f}/1000",
-        # delta=f"{likelihood_diff * 100:+.0f}"
+        f"{current_calc['likelihood_final']*100:.0f}/1000"
     )
 
 st.markdown("---")
+
 # ---------------------------------------------------
 # Detailed Calculation Breakdown
 # ---------------------------------------------------
@@ -584,7 +773,11 @@ with calc_col1:
             pretty_key = field_name.replace('_', ' ').title()
             if isinstance(selected_value, bool):
                 selected_value = "Yes" if selected_value else "No"
-            st.write(f"- **{pretty_key}:** {selected_value}")
+            
+            if field_name in st.session_state.excluded_fields:
+                st.write(f"- **{pretty_key}:** ~~{selected_value}~~ (Excluded)")
+            else:
+                st.write(f"- **{pretty_key}:** {selected_value}")
         st.write(f"Final Impact: **{whatif_exposure_calc['impact_base'] * 100:.0f}/1000**")
 
 with calc_col2:
@@ -593,7 +786,6 @@ with calc_col2:
     with st.expander("View Likelihood Calculation Details", expanded=False):
         st.write(f"**Step 1: Base Likelihood**")
         st.write(f"EPSS Score: {st.session_state.epss_whatif:.4f}")
-        # st.write(f"CVSS Exploitability: {st.session_state.cvss_exploit_whatif:.2f} (Original: {cvss_exploit:.2f})")
         st.write(f"Normalized Likelihood: {current_calc['likelihood_base'] * 100:.0f}/1000")
 
         st.write(f"\n**Step 2: Apply Modifiers**")
@@ -616,7 +808,6 @@ with calc_col2:
 # Final calculation
 st.markdown("#### 🎯 Final Score Calculation")
 st.write(f"RMS = √(({whatif_exposure_calc['impact_base'] * 100:.0f}² + {whatif_exposure_calc['likelihood_final']*100:.0f}²) / 2)")
-# st.write(f"RMS = {whatif_exposure_calc['exposure_score_10']:.2f}")
 st.write(
     f"**Final Exposure Score = {whatif_exposure_calc['exposure_score_1000']:.0f}/1000**")
 
@@ -700,7 +891,6 @@ for mod_key in original_modifiers.keys():
         new_asset_crit_score,
         st.session_state.cvss_base_whatif,
         st.session_state.epss_whatif,
-        # st.session_state.cvss_exploit_whatif,
         scenario_mods
     )
 
@@ -735,29 +925,3 @@ st.dataframe(
 st.markdown("---")
 
 # ---------------------------------------------------
-# Vulnerability Context
-# ---------------------------------------------------
-st.subheader("📋 Vulnerability Details")
-
-detail_col1, detail_col2 = st.columns(2)
-
-with detail_col1:
-    st.markdown("#### Asset Information")
-    st.write(f"**Finding ID:** {data['finding_id']}")
-    st.write(f"**Asset Name:** {data['asset_name']}")
-    st.write(f"**Asset ID:** {data.get('asset_id', 'N/A')}")
-    # st.write(f"**Asset Criticality (Original):** {asset_crit:.0f}/1000")
-    st.write(f"**Asset Criticality:** {new_asset_crit_score:.0f}/1000")
-
-with detail_col2:
-    st.markdown("#### Vulnerability Information")
-    vulnerability_details = data.get('vulnerability_details', {})
-    st.write(f"**Severity:** {vulnerability_details.get('severity', 'N/A')}")
-    # st.write(f"**CVSS Base Score (Original):** {cvss_base:.2f}")
-    st.write(f"**CVSS Base Score:** {st.session_state.cvss_base_whatif:.2f}")
-    # st.write(f"**EPSS Score (Original):** {epss:.4f}")
-    st.write(f"**EPSS Score:** {st.session_state.epss_whatif:.4f}")
-    st.write(f"**Affected Component:** {vulnerability_details.get('affected_component', 'N/A')}")
-
-description = vulnerability_details.get('description', 'No description available')
-st.markdown(f"**Description:** {description}")
